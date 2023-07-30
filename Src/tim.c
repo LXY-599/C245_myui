@@ -584,6 +584,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             ec11_diff = ec11_diff > 0 ? (ec11_diff * ec11_diff) : -(ec11_diff * ec11_diff);
             ec11_count += ec11_diff;
             ec11_diff = 0;
+            printf("ec11_count = %d\r\n", ec11_count);
         }
     }
 }

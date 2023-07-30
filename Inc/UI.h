@@ -13,6 +13,7 @@ void UI_ShowNum_font24(uint16_t x, uint16_t y, uint16_t num, uint8_t len, uint16
 void UI_ShowTemperature(uint16_t x, uint16_t y, uint16_t num, uint16_t color);
 void UI_ShowTargetTemperature(uint16_t x, uint16_t y, uint16_t num, uint16_t color);
 void UI_ShowSoundFlag(uint16_t x, uint16_t y, uint16_t num, uint16_t color);
+void UI_SetBarValue(uint8_t num);
 void Main_Page_Init(void);
 
 #endif

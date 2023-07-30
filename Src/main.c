@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "lcd.h"
 #include "UI.h"
+extern uint16_t ec11_count;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,6 +101,7 @@ int main(void)
     MX_SPI1_Init();
     MX_TIM7_Init();
     /* USER CODE BEGIN 2 */
+    HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_ALL);
     LCD_Init();
     Main_Page_Init();
     //    HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
@@ -117,7 +119,9 @@ int main(void)
         // UI_ShowChar_font68x104(27, 36, 0, RED);
         UI_ShowTemperature(30, 36, 321, GREEN);
         UI_ShowTargetTemperature(30, 150, 123, YELLOW);
-        UI_ShowNum_font24(202, 219, 666, 3, 1, 0, RED);
+        UI_ShowNum_font24(202, 219, 666, 3, 1, 0, BROWN);
+        UI_ShowNum_font24(180, 175, ec11_count, 3, 1, 0, RED);
+        UI_SetBarValue(ec11_count);
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */

@@ -1,5 +1,6 @@
 #include "UI.h"
 #include "font.h"
+#include "usart.h"
 
 static uint16_t UI_bgcolor = BLACK;
 
@@ -154,6 +155,8 @@ void UI_ShowNum_font24(uint16_t x, uint16_t y, uint16_t num, uint8_t len, uint16
     uint8_t pos = 0;
     uint16_t tmp = 0;
 
+    if (num > 9999)
+        return;
     while (mulriple /= 10)
     {
         pos++;
@@ -171,6 +174,10 @@ void UI_ShowNum_font24(uint16_t x, uint16_t y, uint16_t num, uint8_t len, uint16
             if (mode)
             {
                 UI_ShowChar_font24(x + 12 * i, y, 0, color);
+            }
+            else
+            {
+                LCD_Clean(x + 12 * i, y, x + 12 * i + 11, y + 23, UI_bgcolor);
             }
             continue;
         }
@@ -289,6 +296,94 @@ void UI_ShowBar(uint16_t x, uint16_t y, uint16_t color)
     LCD_Clean(x + 12, y + 21, x + 188, y + 23, color);
 }
 
+/******************************************************************************
+      函数说明： 进度条百分比显示
+      入口数据： num 百分比
+      返回值：  无
+******************************************************************************/
+void UI_SetBarValue(uint8_t num)
+{
+    const uint8_t arc_L_sta[5][2] = {219, 216, 214, 213, 213, 212, 211, 211, 211, 211};
+    const uint8_t arc_L_end[5][2] = {220, 223, 225, 226, 226, 227, 228, 228, 228, 228};
+    const uint8_t arc_R_sta[5][2] = {211, 211, 211, 211, 212, 213, 213, 214, 216, 219};
+    const uint8_t arc_R_end[5][2] = {228, 228, 228, 228, 227, 226, 226, 225, 223, 220};
+    static uint8_t last_num = 2;
+    uint16_t *color_bar = (uint16_t *)pic_bar;
+    uint8_t dir = 0;
+    uint8_t i, j, k;
+
+    if (num > 99)
+    {
+        num = 99;
+    }
+    else if (num < 2)
+    {
+        num = 2;
+    }
+    if (num == last_num)
+    {
+        return;
+    }
+    else if (num > last_num)
+    {
+        dir = 0;
+    }
+    else
+    {
+        i = last_num;
+        last_num = num;
+        num = i;
+        dir = 1;
+    }
+    for (i = last_num; i <= num && i < 7; i++) // 6%(含)以下圆弧部分处理
+    {
+        j = i - 2;
+        if (dir)
+        {
+            LCD_Clean(j * 2 + 2, arc_L_sta[j][0], j * 2 + 2, arc_L_end[j][0], UI_bgcolor);
+            LCD_Clean(j * 2 + 3, arc_L_sta[j][1], j * 2 + 3, arc_L_end[j][1], UI_bgcolor);
+        }
+        else
+        {
+            LCD_Clean(j * 2 + 2, arc_L_sta[j][0], j * 2 + 2, arc_L_end[j][0], color_bar[j * 2]);
+            LCD_Clean(j * 2 + 3, arc_L_sta[j][1], j * 2 + 3, arc_L_end[j][1], color_bar[j * 2 + 1]);
+        }
+    }
+    for (i = last_num > 6 ? last_num : 7; i <= num && i < 95; i++) // 7%(含) ~ 94%(含)
+    {
+        j = i - 7;
+        if (dir)
+        {
+            LCD_Clean(j * 2 + 12, 211, j * 2 + 12, 228, UI_bgcolor);
+            LCD_Clean(j * 2 + 13, 211, j * 2 + 13, 228, UI_bgcolor);
+        }
+        else
+        {
+            LCD_Clean(j * 2 + 12, 211, j * 2 + 12, 228, color_bar[j * 2 + 10]);
+            LCD_Clean(j * 2 + 13, 211, j * 2 + 13, 228, color_bar[j * 2 + 11]);
+        }
+    }
+    for (i = last_num > 94 ? last_num : 95; i <= num && i > 94; i++) // 95%(含)以上圆弧部分处理
+    {
+        j = i - 95;
+        if (dir)
+        {
+            LCD_Clean(j * 2 + 188, arc_R_sta[j][0], j * 2 + 188, arc_R_end[j][0], UI_bgcolor);
+            LCD_Clean(j * 2 + 189, arc_R_sta[j][1], j * 2 + 189, arc_R_end[j][1], UI_bgcolor);
+        }
+        else
+        {
+            LCD_Clean(j * 2 + 188, arc_R_sta[j][0], j * 2 + 188, arc_R_end[j][0], color_bar[j * 2 + 184]);
+            LCD_Clean(j * 2 + 189, arc_R_sta[j][1], j * 2 + 189, arc_R_end[j][1], color_bar[j * 2 + 185]);
+        }
+    }
+    if (dir == 0)
+    {
+        last_num = num;
+    }
+    printf("last_num = %d, dir = %d\r\n", last_num, dir);
+}
+
 void Main_Page_Init(void)
 {
     // UI_Background_olor(DARKGRAY);
@@ -316,8 +411,8 @@ void Main_Page_Init(void)
     UI_ShowChinese_font24(156, 175, 12, RED);
     UI_ShowChar_font24(228, 175, 11, RED);
 
-    UI_ShowChinese_font24(216, 199, 14, RED);
-    UI_ShowChinese_font24(198, 199, 13, RED);
+    UI_ShowChinese_font24(216, 199, 14, BROWN);
+    UI_ShowChinese_font24(198, 199, 13, BROWN);
 
     UI_ShowBar(0, 208, BROWN);
 }
