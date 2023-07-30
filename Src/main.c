@@ -27,6 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "lcd.h"
+#include "UI.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,7 +69,7 @@ void SystemClock_Config(void);
 int main(void)
 {
     /* USER CODE BEGIN 1 */
-    char tft_str[50] = {0};
+    uint8_t hour, minute;
     /* USER CODE END 1 */
 
     /* MCU Configuration--------------------------------------------------------*/
@@ -99,6 +100,8 @@ int main(void)
     MX_SPI1_Init();
     MX_TIM7_Init();
     /* USER CODE BEGIN 2 */
+    LCD_Init();
+    Main_Page_Init();
     //    HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
     /* USER CODE END 2 */
 
@@ -106,7 +109,15 @@ int main(void)
     /* USER CODE BEGIN WHILE */
     while (1)
     {
-        HAL_Delay(5);
+        minute = HAL_GetTick() / 1000 / 60;
+        hour = minute / 60;
+        minute = minute - hour * 60;
+        UI_ShowNum_font24(48, 0, hour, 2, 1, 0, BLUE);
+        UI_ShowNum_font24(96, 0, minute, 2, 1, 1, BLUE);
+        // UI_ShowChar_font68x104(27, 36, 0, RED);
+        UI_ShowTemperature(30, 36, 321, GREEN);
+        UI_ShowTargetTemperature(30, 150, 123, YELLOW);
+        UI_ShowNum_font24(202, 219, 666, 3, 1, 0, RED);
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -118,6 +129,7 @@ int main(void)
  * @brief System Clock Configuration
  * @retval None
  */
+
 void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};

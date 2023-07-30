@@ -16,7 +16,7 @@ void LCD_WR_DATA8(uint8_t lcd_data)
 #if SPI_DMA_ENABLE
     HAL_SPI_Transmit_DMA(&LCD_SPI, &lcd_data, 1);
 #else
-    HAL_SPI_Transmit(&LCD_SPI, &lcd_data, 1, 1000);                                           // 启动SPI传输
+    HAL_SPI_Transmit(&LCD_SPI, &lcd_data, 1, 1000);                                            // 启动SPI传输
 #endif
     LCD_CS_Set();
 }
@@ -37,7 +37,7 @@ void LCD_WR_DATA(uint16_t lcd_data)
 #if SPI_DMA_ENABLE
     HAL_SPI_Transmit_DMA(&LCD_SPI, lcd_data_buff, 2);
 #else
-    HAL_SPI_Transmit(&LCD_SPI, lcd_data_buff, 2, 1000);                                       // 启动SPI传输
+    HAL_SPI_Transmit(&LCD_SPI, lcd_data_buff, 2, 1000);                                        // 启动SPI传输
 #endif
     LCD_CS_Set();
 }
@@ -54,7 +54,7 @@ void LCD_WR_REG(uint8_t lcd_data)
 #if SPI_DMA_ENABLE
     HAL_SPI_Transmit_DMA(&LCD_SPI, &lcd_data, 1);
 #else
-    HAL_SPI_Transmit(&LCD_SPI, &lcd_data, 1, 1000);                                           // 启动SPI传输
+    HAL_SPI_Transmit(&LCD_SPI, &lcd_data, 1, 1000);                                            // 启动SPI传输
 #endif
     LCD_DC_Set(); // 写数据
     LCD_CS_Set();
@@ -242,6 +242,31 @@ void LCD_Fill(uint16_t xsta, uint16_t ysta, uint16_t xend, uint16_t yend, uint16
 }
 
 /******************************************************************************
+      函数说明：局部清屏函数
+      入口数据：xsta,ysta   起始坐标
+                xend,yend   终止坐标
+                                color       要填充的颜色
+      返回值：  无
+******************************************************************************/
+void LCD_Clean(uint16_t xsta, uint16_t ysta, uint16_t xend, uint16_t yend, uint16_t color_p)
+{
+    LCD_Address_Set(xsta, ysta, xend, yend); // 设置坐标
+    LCD_CS_Clr();
+    LCD_DC_Set(); // 写数据;
+
+    // 修改为16位数据宽度，写入数据更加效率，不需要拆分
+    LCD_SPI.Init.DataSize = SPI_DATASIZE_16BIT; //	16位数据宽度
+    HAL_SPI_Init(&LCD_SPI);
+
+    LCD_SPI_Transmit(&LCD_SPI, color_p, (xend - xsta + 1) * (yend - ysta + 1));
+
+    // 改回8位数据宽度，因为指令和部分数据都是按照8位传输的
+    LCD_SPI.Init.DataSize = SPI_DATASIZE_8BIT; //	8位数据宽度
+    HAL_SPI_Init(&LCD_SPI);
+    LCD_CS_Set();
+}
+
+/******************************************************************************
       函数说明：在指定位置画点
       入口数据：x,y 画点坐标
                 color 点的颜色
@@ -318,10 +343,17 @@ void LCD_DrawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t c
 ******************************************************************************/
 void LCD_DrawRectangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color)
 {
+#if UNUSED_Fill
     LCD_DrawLine(x1, y1, x2, y1, color);
     LCD_DrawLine(x1, y1, x1, y2, color);
     LCD_DrawLine(x1, y2, x2, y2, color);
     LCD_DrawLine(x2, y1, x2, y2, color);
+#else
+    LCD_Clean(x1, y1, x2, y1, color);
+    LCD_Clean(x1, y1, x1, y2, color);
+    LCD_Clean(x1, y2, x2, y2, color);
+    LCD_Clean(x2, y1, x2, y2, color);
+#endif
 }
 
 /******************************************************************************
@@ -352,4 +384,193 @@ void Draw_Circle(uint16_t x0, uint16_t y0, uint8_t r, uint16_t color)
             b--;
         }
     }
+}
+
+/**********************************************************************************************************************************
+ *
+ * 以下几个函数修改于HAL的库函数，目的是为了SPI传输数据不限数据长度的写入，并且提高清屏的速度
+ *
+ *****************************************************************************************************************FANKE************/
+
+/**
+ * @brief  等待fifo区域发送完成，LCD_SPI_Transmit() 里被调用
+ * @param  hspi pointer to a SPI_HandleTypeDef structure that contains
+ *              the configuration information for SPI module.
+ * @param  Fifo Fifo to check
+ * @param  State Fifo state to check
+ * @param  Timeout Timeout duration
+ * @param  Tickstart tick start value
+ * @retval HAL status
+ * fanke
+ */
+HAL_StatusTypeDef LCD_SPI_WaitFifoStateUntilTimeout(SPI_HandleTypeDef *hspi, uint32_t Fifo, uint32_t State,
+                                                    uint32_t Timeout, uint32_t Tickstart)
+{
+    __IO uint32_t count;
+    uint32_t tmp_timeout;
+    uint32_t tmp_tickstart;
+    __IO uint8_t *ptmpreg8;
+    __IO uint8_t tmpreg8 = 0;
+
+    /* Adjust Timeout value  in case of end of transfer */
+    tmp_timeout = Timeout - (HAL_GetTick() - Tickstart);
+    tmp_tickstart = HAL_GetTick();
+    /* Initialize the 8bit temporary pointer */
+    ptmpreg8 = (__IO uint8_t *)&hspi->Instance->DR;
+    /* Calculate Timeout based on a software loop to avoid blocking issue if Systick is disabled */
+    count = tmp_timeout * ((SystemCoreClock * 35U) >> 20U);
+
+    while ((hspi->Instance->SR & Fifo) != State)
+    {
+        if ((Fifo == SPI_SR_FRLVL) && (State == SPI_FRLVL_EMPTY))
+        {
+            /* Flush Data Register by a blank read */
+            tmpreg8 = *ptmpreg8;
+            /* To avoid GCC warning */
+            UNUSED(tmpreg8);
+        }
+
+        if (Timeout != HAL_MAX_DELAY)
+        {
+            if (((HAL_GetTick() - tmp_tickstart) >= tmp_timeout) || (tmp_timeout == 0U))
+            {
+                /* Disable the SPI and reset the CRC: the CRC value should be cleared
+                on both master and slave sides in order to resynchronize the master
+                and slave for their respective CRC calculation */
+
+                /* Disable TXE, RXNE and ERR interrupts for the interrupt process */
+                __HAL_SPI_DISABLE_IT(hspi, (SPI_IT_TXE | SPI_IT_RXNE | SPI_IT_ERR));
+
+                if ((hspi->Init.Mode == SPI_MODE_MASTER) && ((hspi->Init.Direction == SPI_DIRECTION_1LINE) || (hspi->Init.Direction == SPI_DIRECTION_2LINES_RXONLY)))
+                {
+                    /* Disable SPI peripheral */
+                    __HAL_SPI_DISABLE(hspi);
+                }
+                /* Reset CRC Calculation */
+                if (hspi->Init.CRCCalculation == SPI_CRCCALCULATION_ENABLE)
+                {
+                    SPI_RESET_CRC(hspi);
+                }
+                hspi->State = HAL_SPI_STATE_READY;
+                /* Process Unlocked */
+                __HAL_UNLOCK(hspi);
+                return HAL_TIMEOUT;
+            }
+            /* If Systick is disabled or not incremented, deactivate timeout to go in disable loop procedure */
+            if (count == 0U)
+            {
+                Timeout = 0U;
+            }
+            count--;
+        }
+    }
+
+    return HAL_OK;
+}
+
+/**
+ * @brief  专为屏幕清屏而修改，将需要清屏的颜色批量传输
+ * @param  hspi   : spi的句柄
+ * @param  pData  : 要写入的数据
+ * @param  Size   : 数据大小
+ * @retval HAL status
+ */
+HAL_StatusTypeDef LCD_SPI_Transmit(SPI_HandleTypeDef *hspi, uint16_t pData, uint32_t Size)
+{
+    uint32_t tickstart;
+    uint32_t Timeout = 1000;  // 超时判断
+    uint32_t LCD_TxDataCount; // 传输计数
+    HAL_StatusTypeDef errorcode = HAL_OK;
+
+    /* Check Direction parameter */
+    assert_param(IS_SPI_DIRECTION_2LINES_OR_1LINE_2LINES_TXONLY(hspi->Init.Direction));
+
+    /* Process Locked */
+    __HAL_LOCK(hspi);
+
+    /* Init tickstart for timeout management*/
+    tickstart = HAL_GetTick();
+
+    if (hspi->State != HAL_SPI_STATE_READY)
+    {
+        errorcode = HAL_BUSY;
+        __HAL_UNLOCK(hspi);
+        return errorcode;
+    }
+
+    /* Set the transaction information */
+    hspi->State = HAL_SPI_STATE_BUSY_TX;
+    hspi->ErrorCode = HAL_SPI_ERROR_NONE;
+    //   hspi->pTxBuffPtr  = (uint8_t *)pData;
+    hspi->TxXferSize = Size;
+    hspi->TxXferCount = Size;
+
+    LCD_TxDataCount = Size; // 传输的数据长度
+
+    /*Init field not used in handle to zero */
+    hspi->pRxBuffPtr = NULL;
+    hspi->RxXferSize = (uint16_t)0UL;
+    hspi->RxXferCount = (uint16_t)0UL;
+    hspi->TxISR = NULL;
+    hspi->RxISR = NULL;
+    // fanke
+    /* Configure communication direction : 1Line */
+    SPI_1LINE_TX(hspi); // 单线SPI
+
+    /* Check if the SPI is already enabled */
+    if ((hspi->Instance->CR1 & SPI_CR1_SPE) != SPI_CR1_SPE)
+    {
+        /* Enable SPI peripheral */
+        __HAL_SPI_ENABLE(hspi);
+    }
+    if ((hspi->Init.Mode == SPI_MODE_SLAVE) || (LCD_TxDataCount == 0x01U))
+    {
+        hspi->Instance->DR = (uint16_t)pData;
+        LCD_TxDataCount--;
+    }
+
+    /* Transmit data in 16 Bit mode */
+    /* Transmit data in 16 Bit mode */
+    while (LCD_TxDataCount > 0UL)
+    {
+        /* Wait until TXE flag is set to send data */
+        if (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_TXE))
+        {
+            hspi->Instance->DR = (uint16_t)pData;
+            LCD_TxDataCount--;
+        }
+        else
+        {
+            /* Timeout management */
+            if ((((HAL_GetTick() - tickstart) >= Timeout) && (Timeout != HAL_MAX_DELAY)) || (Timeout == 0U))
+            {
+                errorcode = HAL_TIMEOUT;
+                return HAL_ERROR;
+            }
+        }
+    }
+#if (USE_SPI_CRC != 0U)
+    /* Enable CRC Transmission */
+    if (hspi->Init.CRCCalculation == SPI_CRCCALCULATION_ENABLE)
+    {
+        SET_BIT(hspi->Instance->CR1, SPI_CR1_CRCNEXT);
+    }
+#endif /* USE_SPI_CRC */
+
+    /* Control if the TX fifo is empty */
+    if (LCD_SPI_WaitFifoStateUntilTimeout(hspi, SPI_FLAG_FTLVL, SPI_FTLVL_EMPTY, Timeout, tickstart) != HAL_OK)
+    {
+        SET_BIT(hspi->ErrorCode, HAL_SPI_ERROR_FLAG);
+        hspi->ErrorCode = HAL_SPI_ERROR_FLAG;
+
+        return HAL_ERROR;
+    }
+    /* Process Unlocked */
+    __HAL_UNLOCK(hspi);
+    hspi->State = HAL_SPI_STATE_READY;
+    if (hspi->ErrorCode != HAL_SPI_ERROR_NONE)
+    {
+        return HAL_ERROR;
+    }
+    return errorcode;
 }
